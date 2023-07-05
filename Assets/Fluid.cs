@@ -15,6 +15,7 @@ namespace StableFluids
         [SerializeField] float _exponent = 200;
         [SerializeField] Texture2D _texture1;
         [SerializeField] Texture2D _texture2;
+        [SerializeField] Texture2D _noise;
 
         #endregion
 
@@ -65,6 +66,10 @@ namespace StableFluids
         [SerializeField] bool _overrideVelocityMap;
         [SerializeField] DrawType _setVelocityMapTo = DrawType.Velocity1;
 
+        [Header("Debug")]
+        public MeshRenderer debugRenderer1;
+        public MeshRenderer debugRenderer2;
+
 
         #endregion
 
@@ -100,7 +105,7 @@ namespace StableFluids
         RenderTexture _color2A;
         RenderTexture _color2B;
 
-        RenderTexture AllocateBuffer(int componentCount, int width = 0, int height = 0)
+        RenderTexture AllocateBuffer(int componentCount, int width = 0, int height = 0, bool allowRandomRW = true)
         {
             var format = RenderTextureFormat.ARGBHalf;
             if (componentCount == 1) format = RenderTextureFormat.RHalf;
@@ -110,7 +115,7 @@ namespace StableFluids
             if (height == 0) height = ResolutionY;
 
             var rt = new RenderTexture(width, height, 0, format);
-            rt.enableRandomWrite = true;
+            rt.enableRandomWrite = allowRandomRW;
             rt.Create();
             return rt;
         }
@@ -134,10 +139,15 @@ namespace StableFluids
             VFB.P1 = AllocateBuffer(1);
             VFB.P2 = AllocateBuffer(1);
 
-            _color1A = AllocateBuffer(4, _resolution, _resolution);
-            _color1B = AllocateBuffer(4, _resolution, _resolution);
-            _color2A = AllocateBuffer(4, _resolution, _resolution);
-            _color2B = AllocateBuffer(4, _resolution, _resolution);
+            _color1A = AllocateBuffer(4, _resolution, _resolution, false);
+            _color1B = AllocateBuffer(4, _resolution, _resolution, false);
+            _color2A = AllocateBuffer(4, _resolution, _resolution, false);
+            _color2B = AllocateBuffer(4, _resolution, _resolution, false);
+
+			if (debugRenderer2)
+            	debugRenderer1.material.mainTexture = _color1A;
+            if (debugRenderer2)
+				debugRenderer2.material.mainTexture = _color2A;
 
             Reset1();
             Reset2();
@@ -169,10 +179,12 @@ namespace StableFluids
 
         void Reset1()
         {
+            //_color1A.DiscardContents();
             Graphics.Blit(_texture1, _color1A);
         }
         void Reset2()
         {
+            //_color2A.DiscardContents();
             Graphics.Blit(_texture2, _color2A);
         }
 
@@ -207,7 +219,7 @@ namespace StableFluids
                 switch (_setVelocityMapTo)
                 {
                     case DrawType.ColorBuffer1: target = _color1A; break;
-                    case DrawType.ColorBuffer2: target = _color1B; break;
+                    case DrawType.ColorBuffer2: target = _color2A; break;
                     case DrawType.Velocity1: target = VFB.V1; break;
                     case DrawType.Velocity2: target = VFB.V2; break;
                     case DrawType.Velocity3: target = VFB.V3; break;
@@ -311,18 +323,22 @@ namespace StableFluids
             _shaderSheet.SetFloat("_LerpTo2", _lerpTo2);
             _shaderSheet.SetTexture("_Tex1", _color1A);
             _shaderSheet.SetTexture("_Tex2", _color2A);
+            _shaderSheet.SetTexture("_Noise", _noise);
             Graphics.Blit(_color1A, _color1B, _shaderSheet, 0);
             Graphics.Blit(_color2A, _color2B, _shaderSheet, 0);
 
 
+			// REMOVED because it was causing horrific lag
+			// In case of new lag, maybe hte double-buffering was actually load-beating?...
+			// In any case, I somehow ruined htis merely by adding a new set of textures. They endlessly polluted eachother.
             // Swap the color buffers.
-            var temp = _color1A;
-            _color1A = _color1B;
-            _color1B = temp;
-            //
-            var tmp2 = _color2A;
-            _color2A = _color2B;
-            _color2B = tmp2;
+            // var temp = _color1A;
+            // _color1A = _color1B;
+            // _color1B = temp;
+            // //
+            // var tmp2 = _color2A;
+            // _color2A = _color2B;
+            // _color2B = tmp2;
 
             _previousInput = input;
         }
@@ -343,7 +359,7 @@ namespace StableFluids
                 case DrawType.Pressure2: drawRT = VFB.P2; break;
                 default: Debug.LogError("Invalid DrawType " + _drawType); break;
             }
-            Graphics.Blit(drawRT, destination, _shaderSheet, 1);
+            Graphics.Blit(drawRT, destination, _shaderSheet, 0);
         }
 
         #endregion

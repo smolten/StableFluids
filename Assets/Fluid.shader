@@ -5,15 +5,16 @@ Shader "Hidden/StableFluids"
 {
     Properties
     {
-        _MainTex("", 2D) = ""
-        _Tex1("", 2D) = ""
-        _Tex2("", 2D) = ""
-        _VelocityField("", 2D) = ""
+        _MainTex("Main", 2D) = ""
+        _Tex1("Texture 1", 2D) = ""
+        _Tex2("Texture 2", 2D) = ""
+        _Noise("Noise", 2D) = ""
+        _VelocityField("Velocity Field", 2D) = ""
 
-        _CycleLength("", float) = 0
-        _Phase1("", float) = 0
-        _Phase2("", float) = 0
-        _LerpTo2("", float) = 0
+        _CycleLength("Cycle Duration", float) = 0
+        _Phase1("Phase 1", float) = 0
+        _Phase2("Phase 2", float) = 0
+        _LerpTo2("Lerp to 2", float) = 0
     }
 
     CGINCLUDE
@@ -23,6 +24,7 @@ Shader "Hidden/StableFluids"
     sampler2D _MainTex;
     sampler2D _Tex1;
     sampler2D _Tex2;
+    sampler2D _Noise;
 
     sampler2D _VelocityField;
 
@@ -34,27 +36,28 @@ Shader "Hidden/StableFluids"
     half4 frag_advect(v2f_img i) : SV_Target
     {
 	    float2 velocity = tex2D(_VelocityField, i.uv).xy;
+        float noise = tex2D(_Noise, i.uv).x;
+
+        float phase1 = noise * 0.5 + _Phase1;
+        float phase2 = noise * 0.5 + _Phase2;
 
         // Color advection with the velocity field
-        float2 delta1 = tex2D(_VelocityField, (i.uv) + velocity * _Phase1 ).xy;
-        float2 delta2 = tex2D(_VelocityField, (i.uv) + velocity * _Phase2 ).xy;
+        float2 delta1 = tex2D(_VelocityField, (i.uv) + velocity * phase1 ).xy;
+        float2 delta2 = tex2D(_VelocityField, (i.uv) + velocity * phase2 ).xy;
 
-        float3 color1 = tex2D(_Tex1, i.uv - delta1).xyz;
-        float3 color2 = tex2D(_Tex2, i.uv - delta2).xyz;
+        float3 color1 = tex2D(_Tex1, i.uv + delta1).xyz;
+        float3 color2 = tex2D(_Tex2, i.uv + delta2).xyz;
 
         // Sample color at previous position
-        //float3 color = tex2D(_MainTex, i.uv - offset).xyz;
         float3 color = lerp(color1, color2, _LerpTo2);
 
-        // // Base Texture
-        // color = tex2D(_MainTex, i.uv).xyz;
-
         return half4(color, 1);
+        //return half4(1,1,1,1);
     }
 
     half4 frag_render(v2f_img i) : SV_Target
     {
-        half3 rgb = tex2D(_MainTex, i.uv).rgb;
+        half3 rgb = half3(1,1,1); // WTF???
 
         return half4(GammaToLinearSpace(rgb), 1);
     }
