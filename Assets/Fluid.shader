@@ -1,7 +1,4 @@
-﻿// StableFluids - A GPU implementation of Jos Stam's Stable Fluids on Unity
-// https://github.com/keijiro/StableFluids
-
-Shader "Hidden/StableFluids"
+﻿Shader "Hidden/StableFluids"
 {
     Properties
     {
@@ -12,8 +9,7 @@ Shader "Hidden/StableFluids"
         _VelocityField("Velocity Field", 2D) = ""
 
         _CycleLength("Cycle Duration", float) = 0
-        _Phase1("Phase 1", float) = 0
-        _Phase2("Phase 2", float) = 0
+        _Phase("Phase", float) = 0
         _LerpTo2("Lerp to 2", float) = 0
     }
 
@@ -30,39 +26,44 @@ Shader "Hidden/StableFluids"
     sampler2D _VelocityField;
 
     float2 dim = float2(512,512);
-    float _Phase1;
-    float _Phase2;
+    float _Phase;
     float _LerpTo2;
 
+    // Apply velocity field to the color texture
     half4 frag_advect(v2f_img i) : SV_Target
     {
         float2 aspect_inv = float2(_MainTex_TexelSize.x * _MainTex_TexelSize.w, 1);
 
-	    float2 velocity = tex2D(_VelocityField, i.uv).xy;
-        float noise = 0;//tex2D(_Noise, i.uv).x;
-
-        float phase1 = noise * 0.5 + _Phase1;
-        float phase2 = noise * 0.5 + _Phase2;
+        float2 velocity = tex2D(_VelocityField, i.uv).xy;
+        float noise = tex2D(_Noise, i.uv).x;
+        float phase = noise * 0.5 + _Phase;
 
         // Color advection with the velocity field
-        float2 delta1 = tex2D(_VelocityField, (i.uv) + velocity * phase1 ).xy * aspect_inv;
-        float2 delta2 = tex2D(_VelocityField, (i.uv) + velocity * phase2 ).xy * aspect_inv;
+        float2 delta = tex2D(_VelocityField, (i.uv) + velocity * phase).xy * aspect_inv;
+        float3 color = tex2D(_MainTex, i.uv - delta).xyz;
 
-        float3 color1 = tex2D(_Tex1, i.uv + delta1).xyz;
-        float3 color2 = tex2D(_Tex2, i.uv + delta2).xyz;
+        return half4(color, 1);
+    }
 
-        // Sample color at previous position
+    // Render Main texture
+    half4 frag_img_main(v2f_img i) : SV_Target
+    {
+        float3 color = tex2D(_MainTex, i.uv).xyz;
+
+        return half4(color, 1);
+    }
+
+    // Render a mix of the two textures
+    half4 frag_img_mix(v2f_img i) : SV_Target
+    {
+        float3 color1 = tex2D(_Tex1, i.uv).xyz;
+        float3 color2 = tex2D(_Tex2, i.uv).xyz;
+
         float3 color = lerp(color1, color2, _LerpTo2);
 
         return half4(color, 1);
     }
 
-    half4 frag_render(v2f_img i) : SV_Target
-    {
-        half3 rgb = tex2D(_MainTex, i.uv).xyz;
-
-        return half4(GammaToLinearSpace(rgb), 1);
-    }
 
     ENDCG
 
@@ -80,7 +81,14 @@ Shader "Hidden/StableFluids"
         {
             CGPROGRAM
             #pragma vertex vert_img
-            #pragma fragment frag_render
+            #pragma fragment frag_img_main
+            ENDCG
+        }
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex vert_img
+            #pragma fragment frag_img_mix
             ENDCG
         }
     }

@@ -69,15 +69,17 @@ namespace StableFluids
             LoopedWalls 
         }
 
+        enum ShaderKernel {
+            Advect = 0, DrawMain = 1, DrawMix = 2
+        }
+
         [SerializeField] Texture2D velocityMap;
         [SerializeField] bool _overrideVelocityMap;
         [SerializeField] DrawType _setVelocityMapTo = DrawType.Velocity1;
 
         [Header("Debug")]
+        public bool resetTextures = false;
         public bool clearVelocity = false;
-        public bool swapBuffers = true;
-        public bool pass1not0 = true;
-        public bool blit2ndShader = true;
         public MeshRenderer debugRenderer1;
         public MeshRenderer debugRenderer2;
 
@@ -214,7 +216,7 @@ namespace StableFluids
             if ( resetAtCycleEnd && _phase2 >= CycleLength )
             {
                 _phase2 = 0.0f;
-                //Reset2();
+                Reset2();
             }
             if (calculatesLerp)
             {
@@ -235,6 +237,12 @@ namespace StableFluids
                 Graphics.Blit(Texture2D.blackTexture, VFB.V3);
                 Graphics.Blit(Texture2D.blackTexture, VFB.P1);
                 Graphics.Blit(Texture2D.blackTexture, VFB.P2);
+            }
+            if (resetTextures)
+            {
+                resetTextures = false;
+                Reset1();
+                Reset2();
             }
 
 
@@ -333,29 +341,19 @@ namespace StableFluids
             _shaderSheet.SetTexture("_Tex1", _color1.buffA);
             _shaderSheet.SetTexture("_Tex2", _color2.buffA);
             _shaderSheet.SetTexture("_Noise", _noise);
-            Graphics.Blit(_color1.buffA, _color1.buffB, _shaderSheet, 0);
-            if (blit2ndShader)
-                Graphics.Blit(_color2.buffA, _color2.buffB, _shaderSheet, 0);
+            Graphics.Blit(_color1.buffA, _color1.buffB, _shaderSheet, (int)ShaderKernel.Advect);
+            Graphics.Blit(_color2.buffA, _color2.buffB, _shaderSheet, (int)ShaderKernel.Advect);
 
-
-			// REMOVED because it was causing texture to permenantly bleed through
-			// only resetting 01-05% towards default texture
-			// In case of new lag, maybe the double-buffering was actually load-bearing?...
-			// In any case, I somehow ruined this merely by adding a new set of textures.
-			//
             //Swap the color buffers.
-            if (swapBuffers)
-            {
-                var temp = _color1.buffA;
-                _color1.buffA = _color1.buffB;
-                _color1.buffB = temp;
-                
-                var tmp2 = _color2.buffA;
-                _color2.buffA = _color2.buffB;
-                _color2.buffB = tmp2;
+            var temp = _color1.buffA;
+            _color1.buffA = _color1.buffB;
+            _color1.buffB = temp;
+            
+            var tmp2 = _color2.buffA;
+            _color2.buffA = _color2.buffB;
+            _color2.buffB = tmp2;
 
-                _previousInput = input;
-            }
+            _previousInput = input;
         }
 
         void OnRenderImage(RenderTexture source, RenderTexture destination)
@@ -363,8 +361,12 @@ namespace StableFluids
             DrawType drawType = _drawType;
 
             RenderTexture drawRT = GetTexture(drawType);
-            int pass = pass1not0 ? 1 : 0;
-            Graphics.Blit(drawRT, destination, _shaderSheet, pass);
+
+            // Draw either a Blend of the two resetTextures
+            // Or simply the velocity/pressure field that was blitted to main texture
+            bool drawMix = (drawType == DrawType.ColorBuffer1 || drawType == DrawType.ColorBuffer2);
+            ShaderKernel kernel = (drawMix) ? ShaderKernel.DrawMix : ShaderKernel.DrawMain; 
+            Graphics.Blit(drawRT, destination, _shaderSheet, (int)kernel);
         }
 
         RenderTexture GetTexture(DrawType drawType)
