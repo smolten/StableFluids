@@ -39,7 +39,7 @@ Shader "Hidden/StableFluids"
         float2 aspect_inv = float2(_MainTex_TexelSize.x * _MainTex_TexelSize.w, 1);
 
 	    float2 velocity = tex2D(_VelocityField, i.uv).xy;
-        float noise = tex2D(_Noise, i.uv).x;
+        float noise = 0;//tex2D(_Noise, i.uv).x;
 
         float phase1 = noise * 0.5 + _Phase1;
         float phase2 = noise * 0.5 + _Phase2;
@@ -55,7 +55,6 @@ Shader "Hidden/StableFluids"
         float3 color = lerp(color1, color2, _LerpTo2);
 
         return half4(color, 1);
-        //return half4(1,1,1,1);
     }
 
     half4 frag_render(v2f_img i) : SV_Target

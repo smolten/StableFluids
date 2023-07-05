@@ -41,9 +41,9 @@ namespace StableFluids
 
         public bool animate = true;
         public bool resetAtCycleEnd = true;
-        [Range(0f, 1f)]
+        [Range(0f, 2f)]
         [SerializeField] float _phase1 = 1;
-        [Range(0f, 1f)]
+        [Range(0f, 2f)]
         [SerializeField] float _phase2 = 1;
         public bool calculatesLerp = true;
         [Range(0f, 1f)]
@@ -74,6 +74,10 @@ namespace StableFluids
         [SerializeField] DrawType _setVelocityMapTo = DrawType.Velocity1;
 
         [Header("Debug")]
+        public bool clearVelocity = false;
+        public bool swapBuffers = true;
+        public bool pass1not0 = true;
+        public bool blit2ndShader = true;
         public MeshRenderer debugRenderer1;
         public MeshRenderer debugRenderer2;
 
@@ -107,12 +111,10 @@ namespace StableFluids
         }
 
         // Color buffers (for double buffering)
-        RenderTexture _color1A;
-        RenderTexture _color1B;
-        RenderTexture _color2A;
-        RenderTexture _color2B;
+        (RenderTexture buffA, RenderTexture buffB) _color1;
+        (RenderTexture buffA, RenderTexture buffB) _color2;  
 
-        RenderTexture AllocateBuffer(int componentCount, int width = 0, int height = 0, bool allowRandomRW = true)
+        RenderTexture AllocateBuffer(int componentCount, int width = 0, int height = 0)
         {
             var format = RenderTextureFormat.ARGBHalf;
             if (componentCount == 1) format = RenderTextureFormat.RHalf;
@@ -122,7 +124,7 @@ namespace StableFluids
             if (height == 0) height = ResolutionY;
 
             var rt = new RenderTexture(width, height, 0, format);
-            rt.enableRandomWrite = allowRandomRW;
+            rt.enableRandomWrite = true;
             rt.Create();
             return rt;
         }
@@ -146,15 +148,15 @@ namespace StableFluids
             VFB.P1 = AllocateBuffer(1);
             VFB.P2 = AllocateBuffer(1);
 
-            _color1A = AllocateBuffer(4, _resolution, _resolution, false);
-            _color1B = AllocateBuffer(4, _resolution, _resolution, false);
-            _color2A = AllocateBuffer(4, _resolution, _resolution, false);
-            _color2B = AllocateBuffer(4, _resolution, _resolution, false);
+            _color1.buffA = AllocateBuffer(4, _resolution, _resolution);
+            _color1.buffB = AllocateBuffer(4, _resolution, _resolution);
+            _color2.buffA = AllocateBuffer(4, _resolution, _resolution);
+            _color2.buffB = AllocateBuffer(4, _resolution, _resolution);
 
 			if (debugRenderer2)
-            	debugRenderer1.material.mainTexture = _color1A;
+            	debugRenderer1.material.mainTexture = _color1.buffA;
             if (debugRenderer2)
-				debugRenderer2.material.mainTexture = _color2A;
+				debugRenderer2.material.mainTexture = _color2.buffA;
 
             Reset1();
             Reset2();
@@ -177,22 +179,22 @@ namespace StableFluids
             Destroy(VFB.P1);
             Destroy(VFB.P2);
 
-            Destroy(_color1A);
-            Destroy(_color1B);
-            Destroy(_color2A);
-            Destroy(_color2B);
+            Destroy(_color1.buffA);
+            Destroy(_color1.buffB);
+            Destroy(_color2.buffA);
+            Destroy(_color2.buffB);
         }
 
 
         void Reset1()
         {
-            //_color1A.DiscardContents();
-            Graphics.Blit(_texture1, _color1A);
+            Graphics.Blit(_texture1, _color1.buffA);
+            Graphics.Blit(_texture1, _color1.buffB);
         }
         void Reset2()
         {
-            //_color2A.DiscardContents();
-            Graphics.Blit(_texture2, _color2A);
+            Graphics.Blit(_texture2, _color2.buffA);
+            Graphics.Blit(_texture2, _color2.buffB);
         }
 
         void Update()
@@ -212,7 +214,7 @@ namespace StableFluids
             if ( resetAtCycleEnd && _phase2 >= CycleLength )
             {
                 _phase2 = 0.0f;
-                Reset2();
+                //Reset2();
             }
             if (calculatesLerp)
             {
@@ -222,20 +224,19 @@ namespace StableFluids
 
             if (_overrideVelocityMap)
             {
-                RenderTexture target = null;
-                switch (_setVelocityMapTo)
-                {
-                    case DrawType.ColorBuffer1: target = _color1A; break;
-                    case DrawType.ColorBuffer2: target = _color2A; break;
-                    case DrawType.Velocity1: target = VFB.V1; break;
-                    case DrawType.Velocity2: target = VFB.V2; break;
-                    case DrawType.Velocity3: target = VFB.V3; break;
-                    case DrawType.Pressure1: target = VFB.P1; break;
-                    case DrawType.Pressure2: target = VFB.P2; break;
-                    default: Debug.LogError("Invalid DrawType " + _setVelocityMapTo); break;
-                }
+                RenderTexture target = GetTexture(_setVelocityMapTo);
                 Graphics.Blit(velocityMap, target);
             }
+            if (clearVelocity)
+            {
+                clearVelocity = false;
+                Graphics.Blit(Texture2D.blackTexture, VFB.V1);
+                Graphics.Blit(Texture2D.blackTexture, VFB.V2);
+                Graphics.Blit(Texture2D.blackTexture, VFB.V3);
+                Graphics.Blit(Texture2D.blackTexture, VFB.P1);
+                Graphics.Blit(Texture2D.blackTexture, VFB.P2);
+            }
+
 
             var dt = Time.deltaTime;
             var dx = 1.0f / ResolutionY;
@@ -329,11 +330,12 @@ namespace StableFluids
             _shaderSheet.SetFloat("_Phase1", _phase1);
             _shaderSheet.SetFloat("_Phase2", _phase2);
             _shaderSheet.SetFloat("_LerpTo2", _lerpTo2);
-            _shaderSheet.SetTexture("_Tex1", _color1A);
-            _shaderSheet.SetTexture("_Tex2", _color2A);
+            _shaderSheet.SetTexture("_Tex1", _color1.buffA);
+            _shaderSheet.SetTexture("_Tex2", _color2.buffA);
             _shaderSheet.SetTexture("_Noise", _noise);
-            Graphics.Blit(_color1A, _color1B, _shaderSheet, 0);
-            Graphics.Blit(_color2A, _color2B, _shaderSheet, 0);
+            Graphics.Blit(_color1.buffA, _color1.buffB, _shaderSheet, 0);
+            if (blit2ndShader)
+                Graphics.Blit(_color2.buffA, _color2.buffB, _shaderSheet, 0);
 
 
 			// REMOVED because it was causing texture to permenantly bleed through
@@ -341,35 +343,45 @@ namespace StableFluids
 			// In case of new lag, maybe the double-buffering was actually load-bearing?...
 			// In any case, I somehow ruined this merely by adding a new set of textures.
 			//
-            // Swap the color buffers.
-            // var temp = _color1A;
-            // _color1A = _color1B;
-            // _color1B = temp;
-            // //
-            // var tmp2 = _color2A;
-            // _color2A = _color2B;
-            // _color2B = tmp2;
+            //Swap the color buffers.
+            if (swapBuffers)
+            {
+                var temp = _color1.buffA;
+                _color1.buffA = _color1.buffB;
+                _color1.buffB = temp;
+                
+                var tmp2 = _color2.buffA;
+                _color2.buffA = _color2.buffB;
+                _color2.buffB = tmp2;
 
-            _previousInput = input;
+                _previousInput = input;
+            }
         }
 
         void OnRenderImage(RenderTexture source, RenderTexture destination)
         {
             DrawType drawType = _drawType;
 
-            RenderTexture drawRT = null;
+            RenderTexture drawRT = GetTexture(drawType);
+            int pass = pass1not0 ? 1 : 0;
+            Graphics.Blit(drawRT, destination, _shaderSheet, pass);
+        }
+
+        RenderTexture GetTexture(DrawType drawType)
+        {
+            RenderTexture rt = null;
             switch(drawType)
             {
-                case DrawType.ColorBuffer1: drawRT = _color1A; break;
-                case DrawType.ColorBuffer2: drawRT = _color2A; break;
-                case DrawType.Velocity1: drawRT = VFB.V1; break;
-                case DrawType.Velocity2: drawRT = VFB.V2; break;
-                case DrawType.Velocity3: drawRT = VFB.V3; break;
-                case DrawType.Pressure1: drawRT = VFB.P1; break;
-                case DrawType.Pressure2: drawRT = VFB.P2; break;
+                case DrawType.ColorBuffer1: rt = _color1.buffA; break;
+                case DrawType.ColorBuffer2: rt = _color2.buffA; break;
+                case DrawType.Velocity1: rt = VFB.V1; break;
+                case DrawType.Velocity2: rt = VFB.V2; break;
+                case DrawType.Velocity3: rt = VFB.V3; break;
+                case DrawType.Pressure1: rt = VFB.P1; break;
+                case DrawType.Pressure2: rt = VFB.P2; break;
                 default: Debug.LogError("Invalid DrawType " + _drawType); break;
             }
-            Graphics.Blit(drawRT, destination, _shaderSheet, 0);
+            return rt;
         }
 
         #endregion
