@@ -14,6 +14,7 @@ namespace StableFluids
         [SerializeField] float _force = 300;
         [SerializeField] float _exponent = 200;
         [SerializeField] Texture2D _initial;
+        [SerializeField] Texture2D _initialAlternate;
 
         #endregion
 
@@ -34,12 +35,18 @@ namespace StableFluids
 
         [Header("Custom Code")]
 
-        public bool resetPhase1 = false;
+        public float FlowSpeed = 1.0f;
+        public float CycleLength = 1.0f;
 
+        public bool animate = true;
+        public bool resetAtCycleEnd = true;
         [Range(0f, 10f)]
         [SerializeField] float _phase1 = 1;
         [Range(0f, 10f)]
         [SerializeField] float _phase2 = 1;
+        public bool calculatesLerp = true;
+        [Range(0f, 1f)]
+        [SerializeField] float _lerpTo2 = 0;
 
         [SerializeField] DrawType _drawType = DrawType.ColorBuffer1;
 
@@ -58,33 +65,6 @@ namespace StableFluids
         [SerializeField] bool _overrideVelocityMap;
         [SerializeField] DrawType _setVelocityMapTo = DrawType.Velocity1;
 
-        [SerializeField] public bool _stopTypeChoosesDrawType = true;
-        [SerializeField] public ComputeSteps _stopAt = ComputeSteps.ApplyVelocityAndSwapBuffers;
-        private DrawType _stoppedDrawType = DrawType.ColorBuffer1;
-
-        public enum ComputeSteps 
-        {
-            Advect,
-            DiffuseSetup,
-            JacobiIteration,
-            AddExternalForces,
-            ProjectionSetup,
-            JacobiIteration2,
-            ProjectionFinish,
-            ApplyVelocityAndSwapBuffers
-        }
-
-        void StopOn(DrawType stopType)
-        {
-            _stoppedDrawType = stopType;
-            Graphics.Blit(_colorRT1, _colorRT2, _shaderSheet, 0);
-
-
-            // Swap the color buffers.
-            var tmp = _colorRT1;
-            _colorRT1 = _colorRT2;
-            _colorRT2 = tmp;
-        }
 
         #endregion
 
@@ -115,8 +95,10 @@ namespace StableFluids
         }
 
         // Color buffers (for double buffering)
-        RenderTexture _colorRT1;
-        RenderTexture _colorRT2;
+        RenderTexture _color1A;
+        RenderTexture _color1B;
+        RenderTexture _color2A;
+        RenderTexture _color2B;
 
         RenderTexture AllocateBuffer(int componentCount, int width = 0, int height = 0)
         {
@@ -152,14 +134,20 @@ namespace StableFluids
             VFB.P1 = AllocateBuffer(1);
             VFB.P2 = AllocateBuffer(1);
 
-            _colorRT1 = AllocateBuffer(4, Screen.width, Screen.height);
-            _colorRT2 = AllocateBuffer(4, Screen.width, Screen.height);
+            _color1A = AllocateBuffer(4, Screen.width, Screen.height);
+            _color1B = AllocateBuffer(4, Screen.width, Screen.height);
+            _color2A = AllocateBuffer(4, Screen.width, Screen.height);
+            _color2B = AllocateBuffer(4, Screen.width, Screen.height);
 
-            Graphics.Blit(_initial, _colorRT1);
+            Graphics.Blit(_initial, _color1A);
+            Graphics.Blit(_initialAlternate, _color2A);
 
         #if UNITY_IOS
             Application.targetFrameRate = 60;
         #endif
+
+            _phase1 = 0.0f;
+            _phase2 = CycleLength * 0.5f;
         }
 
         void OnDestroy()
@@ -172,28 +160,57 @@ namespace StableFluids
             Destroy(VFB.P1);
             Destroy(VFB.P2);
 
-            Destroy(_colorRT1);
-            Destroy(_colorRT2);
+            Destroy(_color1A);
+            Destroy(_color1B);
+            Destroy(_color2A);
+            Destroy(_color2B);
         }
 
 
         void Reset1()
         {
             // Maintain velocities
-            Destroy(_colorRT1);
-            Destroy(_colorRT2);
+            Destroy(_color1A);
+            Destroy(_color1B);
 
-            _colorRT1 = AllocateBuffer(4, Screen.width, Screen.height);
-            _colorRT2 = AllocateBuffer(4, Screen.width, Screen.height);
-            Graphics.Blit(_initial, _colorRT1);
+            _color1A = AllocateBuffer(4, Screen.width, Screen.height);
+            _color1B = AllocateBuffer(4, Screen.width, Screen.height);
+            Graphics.Blit(_initial, _color1A);
+        }
+        void Reset2()
+        {
+            // Maintain velocities
+            Destroy(_color2A);
+            Destroy(_color2B);
+
+            _color2A = AllocateBuffer(4, Screen.width, Screen.height);
+            _color2B = AllocateBuffer(4, Screen.width, Screen.height);
+            Graphics.Blit(_initialAlternate, _color2A);
         }
 
         void Update()
         {
-            if (resetPhase1)
+            float timeDelta = Time.deltaTime;
+       
+            // Update the flow map offsets for both layers
+            if (animate) {
+                _phase1 += FlowSpeed * timeDelta;
+                _phase2 += FlowSpeed * timeDelta;
+            }
+            if ( resetAtCycleEnd && _phase1 >= CycleLength )
             {
-                resetPhase1 = false;
+                _phase1 = 0.0f;
                 Reset1();
+            }
+            if ( resetAtCycleEnd && _phase2 >= CycleLength )
+            {
+                _phase2 = 0.0f;
+                Reset2();
+            }
+            if (calculatesLerp)
+            {
+                float HalfCycle = CycleLength / 2f;
+                _lerpTo2 = ( Mathf.Abs(HalfCycle - _phase1) / HalfCycle );
             }
 
             if (_overrideVelocityMap)
@@ -201,8 +218,8 @@ namespace StableFluids
                 RenderTexture target = null;
                 switch (_setVelocityMapTo)
                 {
-                    case DrawType.ColorBuffer1: target = _colorRT1; break;
-                    case DrawType.ColorBuffer2: target = _colorRT2; break;
+                    case DrawType.ColorBuffer1: target = _color1A; break;
+                    case DrawType.ColorBuffer2: target = _color1B; break;
                     case DrawType.Velocity1: target = VFB.V1; break;
                     case DrawType.Velocity2: target = VFB.V2; break;
                     case DrawType.Velocity3: target = VFB.V3; break;
@@ -231,22 +248,12 @@ namespace StableFluids
             _compute.SetTexture(Kernels.Advect, "W_out", VFB.V2);
             _compute.Dispatch(Kernels.Advect, ThreadCountX, ThreadCountY, 1);
 
-            if (_stopAt == ComputeSteps.Advect) {
-                StopOn(DrawType.Velocity2);
-                return;
-            }
-
             // Diffuse setup
             var dif_alpha = dx * dx / (_viscosity * dt);
             _compute.SetFloat("Alpha", dif_alpha);
             _compute.SetFloat("Beta", 4 + dif_alpha);
             Graphics.CopyTexture(VFB.V2, VFB.V1);
             _compute.SetTexture(Kernels.Jacobi2, "B2_in", VFB.V1);
-
-            if (_stopAt == ComputeSteps.DiffuseSetup) {
-                StopOn(DrawType.Velocity1);
-                return;
-            }
 
             // Jacobi iteration
             for (var i = 0; i < 20; i++)
@@ -258,11 +265,6 @@ namespace StableFluids
                 _compute.SetTexture(Kernels.Jacobi2, "X2_in", VFB.V3);
                 _compute.SetTexture(Kernels.Jacobi2, "X2_out", VFB.V2);
                 _compute.Dispatch(Kernels.Jacobi2, ThreadCountX, ThreadCountY, 1);
-            }
-
-            if (_stopAt == ComputeSteps.JacobiIteration) {
-                StopOn(DrawType.Velocity2);
-                return;
             }
 
             // Add external force
@@ -282,21 +284,11 @@ namespace StableFluids
 
             _compute.Dispatch(Kernels.Force, ThreadCountX, ThreadCountY, 1);
 
-            if (_stopAt == ComputeSteps.AddExternalForces) {
-                StopOn(DrawType.Velocity3);
-                return;
-            }
-
             // Projection setup
             _compute.SetTexture(Kernels.PSetup, "W_in", VFB.V3);
             _compute.SetTexture(Kernels.PSetup, "DivW_out", VFB.V2);
             _compute.SetTexture(Kernels.PSetup, "P_out", VFB.P1);
             _compute.Dispatch(Kernels.PSetup, ThreadCountX, ThreadCountY, 1);
-
-            if (_stopAt == ComputeSteps.ProjectionSetup) {
-                StopOn(DrawType.Pressure1);
-                return;
-            }
 
             // Jacobi iteration
             _compute.SetFloat("Alpha", -dx * dx);
@@ -314,36 +306,33 @@ namespace StableFluids
                 _compute.Dispatch(Kernels.Jacobi1, ThreadCountX, ThreadCountY, 1);
             }
 
-            if (_stopAt == ComputeSteps.JacobiIteration2) {
-                StopOn(DrawType.Pressure1);
-                return;
-            }
-
             // Projection finish
             _compute.SetTexture(Kernels.PFinish, "W_in", VFB.V3);
             _compute.SetTexture(Kernels.PFinish, "P_in", VFB.P1);
             _compute.SetTexture(Kernels.PFinish, "U_out", VFB.V1);
             _compute.Dispatch(Kernels.PFinish, ThreadCountX, ThreadCountY, 1);
 
-            if (_stopAt == ComputeSteps.ProjectionFinish) {
-                StopOn(DrawType.Velocity1);
-                return;
-            }
-
             // Apply the velocity field to the color buffer.
             var offs = Vector2.one * (Input.GetMouseButton(1) ? 0 : 1e+7f);
             _shaderSheet.SetVector("_ForceOrigin", input + offs);
             _shaderSheet.SetFloat("_ForceExponent", _exponent);
             _shaderSheet.SetTexture("_VelocityField", VFB.V1);
+            _shaderSheet.SetFloat("_CycleLength", CycleLength);
             _shaderSheet.SetFloat("_Phase1", _phase1);
             _shaderSheet.SetFloat("_Phase2", _phase2);
-            Graphics.Blit(_colorRT1, _colorRT2, _shaderSheet, 0);
+            _shaderSheet.SetFloat("_LerpTo2", _lerpTo2);
+            _shaderSheet.SetTexture("_SubTex", _color2A);
+            Graphics.Blit(_color1A, _color1B, _shaderSheet, 0);
 
 
             // Swap the color buffers.
-            var temp = _colorRT1;
-            _colorRT1 = _colorRT2;
-            _colorRT2 = temp;
+            var temp = _color1A;
+            _color1A = _color1B;
+            _color1B = temp;
+            //
+            var tmp2 = _color2A;
+            _color2A = _color2B;
+            _color2B = tmp2;
 
             _previousInput = input;
         }
@@ -351,14 +340,12 @@ namespace StableFluids
         void OnRenderImage(RenderTexture source, RenderTexture destination)
         {
             DrawType drawType = _drawType;
-            if (_stopTypeChoosesDrawType &&_stopAt != ComputeSteps.ApplyVelocityAndSwapBuffers)
-                drawType = _stoppedDrawType;
 
             RenderTexture drawRT = null;
             switch(drawType)
             {
-                case DrawType.ColorBuffer1: drawRT = _colorRT1; break;
-                case DrawType.ColorBuffer2: drawRT = _colorRT2; break;
+                case DrawType.ColorBuffer1: drawRT = _color1A; break;
+                case DrawType.ColorBuffer2: drawRT = _color1B; break;
                 case DrawType.Velocity1: drawRT = VFB.V1; break;
                 case DrawType.Velocity2: drawRT = VFB.V2; break;
                 case DrawType.Velocity3: drawRT = VFB.V3; break;

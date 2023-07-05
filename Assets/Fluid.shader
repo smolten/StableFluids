@@ -6,10 +6,13 @@ Shader "Hidden/StableFluids"
     Properties
     {
         _MainTex("", 2D) = ""
+        _SubTex("", 2D) = ""
         _VelocityField("", 2D) = ""
 
+        _CycleLength("", float) = 0
         _Phase1("", float) = 0
         _Phase2("", float) = 0
+        _LerpTo2("", float) = 0
     }
 
     CGINCLUDE
@@ -17,7 +20,7 @@ Shader "Hidden/StableFluids"
     #include "UnityCG.cginc"
 
     sampler2D _MainTex;
-    float4 _MainTex_TexelSize;
+    sampler2D _SubTex;
 
     sampler2D _VelocityField;
 
@@ -25,33 +28,35 @@ Shader "Hidden/StableFluids"
     float _ForceExponent;
 
     float2 dim = float2(512,512);
+    float _CycleLength;
     float _Phase1;
     float _Phase2;
+    float _LerpTo2;
 
     half4 frag_advect(v2f_img i) : SV_Target
     {
-        // Time parameters
-        // float time = _Time.y; // Dye is unused
-        // float deltaTime = unity_DeltaTime.x; // Deltatime is moved into Phase1 and Pahse2
-
-        // Aspect ratio coefficients
-        float2 aspect = float2(_MainTex_TexelSize.y * _MainTex_TexelSize.z, 1);
-        float2 aspect_inv = float2(_MainTex_TexelSize.x * _MainTex_TexelSize.w, 1);
+	    float2 velocity = tex2D(_VelocityField, i.uv).xy;
 
         // Color advection with the velocity field
-        float2 delta1 = tex2D(_VelocityField, i.uv).xy * aspect_inv * _Phase1;
-        float2 delta2 = tex2D(_VelocityField, i.uv).xy * aspect_inv * _Phase2;
+        float2 delta1 = tex2D(_VelocityField, (i.uv) + velocity * _Phase1 ).xy;
+        float2 delta2 = tex2D(_VelocityField, (i.uv) + velocity * _Phase2 ).xy;
 
+        float3 color1 = tex2D(_MainTex, i.uv - delta1).xyz;
+        float3 color2 = tex2D(_SubTex, i.uv - delta2).xyz;
 
         // Blend
-        float HalfCycle = 5;
-        float flowLerp = ( abs( HalfCycle - _Phase1 ) / HalfCycle );
-        float2 offset = float2(0,0);
-        offset.x = lerp(delta1.x, delta2.x, flowLerp);
-        offset.y = lerp(delta1.y, delta2.y, flowLerp);
+        float HalfCycle = _CycleLength / 2.0;
+        //float lerpto2 = ( abs(HalfCycle - _Phase1) / HalfCycle );
+        //float2 offset = float2(0,0);
+        //offset = lerp(delta1, delta2, _LerpTo2);
 
         // Sample color at previous position
-        float3 color = tex2D(_MainTex, i.uv - offset).xyz;
+        //float3 color = tex2D(_MainTex, i.uv - offset).xyz;
+        float3 color = lerp(color1, color2, _LerpTo2);
+
+        // float3 color1 = tex2D(_MainTex, i.uv - delta1).xyz;
+        // float3 color2 = tex2D(_SubTex, i.uv - delta2).xyz;
+        // color = lerp(color1, color2, _LerpTo2);
 
         // Dye (injection color)
         // float3 dye = saturate(sin(time * float3(2.72, 5.12, 4.98)) + 0.5);
