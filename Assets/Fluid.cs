@@ -336,9 +336,11 @@ namespace StableFluids
             Graphics.Blit(_color2A, _color2B, _shaderSheet, 0);
 
 
-			// REMOVED because it was causing horrific lag
-			// In case of new lag, maybe hte double-buffering was actually load-beating?...
-			// In any case, I somehow ruined htis merely by adding a new set of textures. They endlessly polluted eachother.
+			// REMOVED because it was causing texture to permenantly bleed through
+			// only resetting 01-05% towards default texture
+			// In case of new lag, maybe the double-buffering was actually load-bearing?...
+			// In any case, I somehow ruined this merely by adding a new set of textures.
+			//
             // Swap the color buffers.
             // var temp = _color1A;
             // _color1A = _color1B;

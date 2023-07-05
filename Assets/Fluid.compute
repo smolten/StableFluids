@@ -65,10 +65,7 @@ void AdvectBoundary(inout float2 uv, out bool zeroVelocity)
     switch(BoundaryType)
     {
         case SolidWalls: 
-            if (uv.x < 0 || uv.x > 1 || uv.y < 0 || uv.y > 1) {
-                // Clamp UV coordinates to edge
-                uv = clamp(uv, 0, 1);
-            }
+            // Do nothing, solid walls is default behaviour
             break;
         case OpenWalls:
             if (uv.x < 0 || uv. x > 1 || uv.y < 0 || uv.y > 1) {
@@ -89,7 +86,7 @@ void AdvectBoundary(inout float2 uv, out bool zeroVelocity)
 void ForceBoundary(uint2 dim, uint2 tid, float2 pos, inout float2 force) 
 {
     if (BoundaryType == SolidWalls) {
-        // Do nothing, solid walls
+            // Do nothing, solid walls is default behaviour
     } else if (BoundaryType == OpenWalls) {
         if (any(tid == 0) || any(tid == dim - 1)) {
             // Set force to 0 at boundaries
@@ -111,15 +108,17 @@ void ForceBoundary(uint2 dim, uint2 tid, float2 pos, inout float2 force)
     }
 }
 
-void PSetupBoundary(uint2 dim, uint2 tid, inout float div) 
+void PSetupBoundary(uint2 dim, uint2 tid, inout float div, out bool updateDivergence) 
 {
+    updateDivergence = false;
     if (BoundaryType == SolidWalls) {
-        // Do nothing, solid walls
+        // Do nothing, solid walls is default behaviour
         //if (div != 0) debug.log("Divergence is not 0 at solid walls");
     } else if (BoundaryType == OpenWalls) {
         if (any(tid == 0) || any(tid == dim - 1)) {
             // Set divergence to 0 at boundaries
             div = 0;
+            updateDivergence = true;
         }
     } else if (BoundaryType == LoopedWalls) {
         // @ todo - can we move P_in writes to PFinishBoundary?
@@ -128,6 +127,7 @@ void PSetupBoundary(uint2 dim, uint2 tid, inout float div)
         // if (tid.x == dim.x - 1) div = P_in[tid - int2(dim.x - 1, 0)];
         // if (tid.y == 0) div = P_in[tid + int2(0, dim.y - 1)];
         // if (tid.y == dim.y - 1) div = P_in[tid - int2(0, dim.y - 1)];
+        updateDivergence = true;
     } else {
         //debug.log("Invalid boundary condition: " + BoundaryType);
     }
@@ -203,9 +203,14 @@ void PSetup(uint2 tid : SV_DispatchThreadID)
                      W_in[tid + int2(0, 1)].y - W_in[tid - int2(0, 1)].y) * dim.y / 2;
 
     DivW_out[tid] = div;
-    PSetupBoundary(dim, tid, div);
+    bool updateDivergence;
+    PSetupBoundary(dim, tid, div, updateDivergence);
 
-    P_out[tid] = div;
+    if(BoundaryType == SolidWalls)
+        P_out[tid] = 100000;
+        //debug.assert(div == 0);
+
+    P_out[tid] = updateDivergence ? div : 0;
 }
 
 // Finishing for Project step (divergence free field calculation)
@@ -223,7 +228,6 @@ void PFinish(uint2 tid : SV_DispatchThreadID)
     float P4 = P_in[min(tid + int2(0, 1), dim - 2)];
 
     float2 u = W_in[tid] - float2(P2 - P1, P4 - P3) * dim.y / 2;
-    float2 vel = u;
     PFinishBoundary(dim, tid, u);
 
     U_out[tid] = u;
