@@ -22,6 +22,7 @@ Shader "Hidden/StableFluids"
     #include "UnityCG.cginc"
 
     sampler2D _MainTex;
+    float4 _MainTex_TexelSize;
     sampler2D _Tex1;
     sampler2D _Tex2;
     sampler2D _Noise;
@@ -35,6 +36,8 @@ Shader "Hidden/StableFluids"
 
     half4 frag_advect(v2f_img i) : SV_Target
     {
+        float2 aspect_inv = float2(_MainTex_TexelSize.x * _MainTex_TexelSize.w, 1);
+
 	    float2 velocity = tex2D(_VelocityField, i.uv).xy;
         float noise = tex2D(_Noise, i.uv).x;
 
@@ -42,8 +45,8 @@ Shader "Hidden/StableFluids"
         float phase2 = noise * 0.5 + _Phase2;
 
         // Color advection with the velocity field
-        float2 delta1 = tex2D(_VelocityField, (i.uv) + velocity * phase1 ).xy;
-        float2 delta2 = tex2D(_VelocityField, (i.uv) + velocity * phase2 ).xy;
+        float2 delta1 = tex2D(_VelocityField, (i.uv) + velocity * phase1 ).xy * aspect_inv;
+        float2 delta2 = tex2D(_VelocityField, (i.uv) + velocity * phase2 ).xy * aspect_inv;
 
         float3 color1 = tex2D(_Tex1, i.uv + delta1).xyz;
         float3 color2 = tex2D(_Tex2, i.uv + delta2).xyz;
@@ -57,7 +60,7 @@ Shader "Hidden/StableFluids"
 
     half4 frag_render(v2f_img i) : SV_Target
     {
-        half3 rgb = half3(1,1,1); // WTF???
+        half3 rgb = tex2D(_MainTex, i.uv).xyz;
 
         return half4(GammaToLinearSpace(rgb), 1);
     }
