@@ -146,8 +146,8 @@ MonoBehaviour:
   _viscosity: 0.00001
   _force: 300
   _exponent: 200
-  _texture1: {fileID: 2800000, guid: 4da0809f51d339f4fa0eadfb350f0d16, type: 3}
-  _texture2: {fileID: 2800000, guid: 4da0809f51d339f4fa0eadfb350f0d16, type: 3}
+  _texture1: {fileID: 2800000, guid: 9024e3c421997374884c9e50dfb4623d, type: 3}
+  _texture2: {fileID: 2800000, guid: 9024e3c421997374884c9e50dfb4623d, type: 3}
   _noise: {fileID: 0}
   _compute: {fileID: 7200000, guid: cd1f70f1f6b4beb45a02e1c088f0a109, type: 3}
   _shader: {fileID: 4800000, guid: 0486f5f9fa757fa49a5b9613050036fb, type: 3}
