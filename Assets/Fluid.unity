@@ -143,20 +143,20 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _resolution: 512
-  _viscosity: 0.000001
+  _viscosity: 1
   _force: 300
   _exponent: 200
-  _initial: {fileID: 2800000, guid: 4da0809f51d339f4fa0eadfb350f0d16, type: 3}
-  _initialAlternate: {fileID: 2800000, guid: 9024e3c421997374884c9e50dfb4623d, type: 3}
+  _texture1: {fileID: 2800000, guid: 9024e3c421997374884c9e50dfb4623d, type: 3}
+  _texture2: {fileID: 2800000, guid: 9024e3c421997374884c9e50dfb4623d, type: 3}
   _compute: {fileID: 7200000, guid: cd1f70f1f6b4beb45a02e1c088f0a109, type: 3}
   _shader: {fileID: 4800000, guid: 0486f5f9fa757fa49a5b9613050036fb, type: 3}
   FlowSpeed: 1
   CycleLength: 1
-  animate: 0
+  animate: 1
   resetAtCycleEnd: 1
-  _phase1: 5
+  _phase1: 0
   _phase2: 0
-  calculatesLerp: 0
+  calculatesLerp: 1
   _lerpTo2: 0
   _drawType: 0
   velocityMap: {fileID: 2800000, guid: 93d9db6637500754ebc98a80a00f9906, type: 3}

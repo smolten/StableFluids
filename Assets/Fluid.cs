@@ -13,8 +13,8 @@ namespace StableFluids
         [SerializeField] float _viscosity = 1e-6f;
         [SerializeField] float _force = 300;
         [SerializeField] float _exponent = 200;
-        [SerializeField] Texture2D _initial;
-        [SerializeField] Texture2D _initialAlternate;
+        [SerializeField] Texture2D _texture1;
+        [SerializeField] Texture2D _texture2;
 
         #endregion
 
@@ -40,9 +40,9 @@ namespace StableFluids
 
         public bool animate = true;
         public bool resetAtCycleEnd = true;
-        [Range(0f, 10f)]
+        [Range(0f, 1f)]
         [SerializeField] float _phase1 = 1;
-        [Range(0f, 10f)]
+        [Range(0f, 1f)]
         [SerializeField] float _phase2 = 1;
         public bool calculatesLerp = true;
         [Range(0f, 1f)]
@@ -134,13 +134,13 @@ namespace StableFluids
             VFB.P1 = AllocateBuffer(1);
             VFB.P2 = AllocateBuffer(1);
 
-            _color1A = AllocateBuffer(4, Screen.width, Screen.height);
-            _color1B = AllocateBuffer(4, Screen.width, Screen.height);
-            _color2A = AllocateBuffer(4, Screen.width, Screen.height);
-            _color2B = AllocateBuffer(4, Screen.width, Screen.height);
+            _color1A = AllocateBuffer(4, _resolution, _resolution);
+            _color1B = AllocateBuffer(4, _resolution, _resolution);
+            _color2A = AllocateBuffer(4, _resolution, _resolution);
+            _color2B = AllocateBuffer(4, _resolution, _resolution);
 
-            Graphics.Blit(_initial, _color1A);
-            Graphics.Blit(_initialAlternate, _color2A);
+            Reset1();
+            Reset2();
 
         #if UNITY_IOS
             Application.targetFrameRate = 60;
@@ -169,23 +169,11 @@ namespace StableFluids
 
         void Reset1()
         {
-            // Maintain velocities
-            Destroy(_color1A);
-            Destroy(_color1B);
-
-            _color1A = AllocateBuffer(4, Screen.width, Screen.height);
-            _color1B = AllocateBuffer(4, Screen.width, Screen.height);
-            Graphics.Blit(_initial, _color1A);
+            Graphics.Blit(_texture1, _color1A);
         }
         void Reset2()
         {
-            // Maintain velocities
-            Destroy(_color2A);
-            Destroy(_color2B);
-
-            _color2A = AllocateBuffer(4, Screen.width, Screen.height);
-            _color2B = AllocateBuffer(4, Screen.width, Screen.height);
-            Graphics.Blit(_initialAlternate, _color2A);
+            Graphics.Blit(_texture2, _color2A);
         }
 
         void Update()
@@ -240,8 +228,9 @@ namespace StableFluids
             );
 
             // Common variables
-            _compute.SetFloat("Time", Time.time);
+            _compute.SetFloat("Time", 0);  // Unused
             _compute.SetFloat("DeltaTime", dt);
+            _compute.SetFloat("FlowSpeed", FlowSpeed);
 
             // Advection
             _compute.SetTexture(Kernels.Advect, "U_in", VFB.V1);
@@ -317,12 +306,13 @@ namespace StableFluids
             _shaderSheet.SetVector("_ForceOrigin", input + offs);
             _shaderSheet.SetFloat("_ForceExponent", _exponent);
             _shaderSheet.SetTexture("_VelocityField", VFB.V1);
-            _shaderSheet.SetFloat("_CycleLength", CycleLength);
             _shaderSheet.SetFloat("_Phase1", _phase1);
             _shaderSheet.SetFloat("_Phase2", _phase2);
             _shaderSheet.SetFloat("_LerpTo2", _lerpTo2);
-            _shaderSheet.SetTexture("_SubTex", _color2A);
+            _shaderSheet.SetTexture("_Tex1", _color1A);
+            _shaderSheet.SetTexture("_Tex2", _color2A);
             Graphics.Blit(_color1A, _color1B, _shaderSheet, 0);
+            Graphics.Blit(_color2A, _color2B, _shaderSheet, 0);
 
 
             // Swap the color buffers.
@@ -345,7 +335,7 @@ namespace StableFluids
             switch(drawType)
             {
                 case DrawType.ColorBuffer1: drawRT = _color1A; break;
-                case DrawType.ColorBuffer2: drawRT = _color1B; break;
+                case DrawType.ColorBuffer2: drawRT = _color2A; break;
                 case DrawType.Velocity1: drawRT = VFB.V1; break;
                 case DrawType.Velocity2: drawRT = VFB.V2; break;
                 case DrawType.Velocity3: drawRT = VFB.V3; break;

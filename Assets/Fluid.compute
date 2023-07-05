@@ -11,6 +11,7 @@
 // Common parameter
 float Time;
 float DeltaTime;
+float FlowSpeed;
 
 // External force
 float2 ForceOrigin;
@@ -57,7 +58,7 @@ void Advect(uint2 tid : SV_DispatchThreadID)
     W_out.GetDimensions(dim.x, dim.y);
 
     float2 uv = (tid + 0.5) / dim;
-    float2 duv = U_in[tid] * float2((float)dim.y / dim.x, 1) * DeltaTime;
+    float2 duv = U_in[tid] * float2((float)dim.y / dim.x, 1) * DeltaTime * FlowSpeed;
 
     W_out[tid] = U_in.SampleLevel(samplerU_in, uv - duv, 0);
 }
@@ -72,7 +73,7 @@ void Force(uint2 tid : SV_DispatchThreadID)
     float2 pos = (tid + 0.5 - dim * 0.5) / dim.y;
     float amp = exp(-ForceExponent * distance(ForceOrigin, pos));
 
-    W_out[tid] = W_in[tid] + ForceVector * amp;
+    W_out[tid] = W_in[tid] + ForceVector * amp * FlowSpeed;
 }
 
 // Setup for Project step (divW calculation)
@@ -104,7 +105,7 @@ void PFinish(uint2 tid : SV_DispatchThreadID)
 
     float2 u = W_in[tid] - float2(P2 - P1, P4 - P3) * dim.y / 2;
 
-    U_out[tid] = u;
+    U_out[tid] = u * FlowSpeed;
 
     if (tid.x == 1) U_out[int2(0, tid.y)] = -u;
     if (tid.y == 1) U_out[int2(tid.x, 0)] = -u;
