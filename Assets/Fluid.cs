@@ -116,6 +116,9 @@ namespace StableFluids
         (RenderTexture buffA, RenderTexture buffB) _color1;
         (RenderTexture buffA, RenderTexture buffB) _color2;  
 
+        // Tmp buffers
+        //RenderTexture _initialVelocity;
+
         RenderTexture AllocateBuffer(int componentCount, int width = 0, int height = 0)
         {
             var format = RenderTextureFormat.ARGBHalf;
@@ -150,6 +153,8 @@ namespace StableFluids
             VFB.P1 = AllocateBuffer(1);
             VFB.P2 = AllocateBuffer(1);
 
+            //_initialVelocity = AllocateBuffer(2);
+
             _color1.buffA = AllocateBuffer(4, _resolution, _resolution);
             _color1.buffB = AllocateBuffer(4, _resolution, _resolution);
             _color2.buffA = AllocateBuffer(4, _resolution, _resolution);
@@ -180,6 +185,8 @@ namespace StableFluids
             Destroy(VFB.V3);
             Destroy(VFB.P1);
             Destroy(VFB.P2);
+
+            //Destroy(_initialVelocity);
 
             Destroy(_color1.buffA);
             Destroy(_color1.buffB);
@@ -261,11 +268,14 @@ namespace StableFluids
             _compute.SetFloat("FlowSpeed", FlowSpeed);
             _compute.SetInt("BoundaryType", (int)_boundaryType);
 
+            // Backup velocity so PFinish kernel can read it for BoundaryConditions
+            //Graphics.CopyTexture(VFB.V1, _initialVelocity);
+
             // Advection
             _compute.SetTexture(Kernels.Advect, "U_in", VFB.V1);
             _compute.SetTexture(Kernels.Advect, "W_out", VFB.V2);
             _compute.Dispatch(Kernels.Advect, ThreadCountX, ThreadCountY, 1);
-
+            
             // Diffuse setup
             var dif_alpha = dx * dx / (_viscosity * dt);
             _compute.SetFloat("Alpha", dif_alpha);
@@ -327,6 +337,7 @@ namespace StableFluids
             // Projection finish
             _compute.SetTexture(Kernels.PFinish, "W_in", VFB.V3);
             _compute.SetTexture(Kernels.PFinish, "P_in", VFB.P1);
+            //_compute.SetTexture(Kernels.PFinish, "U_in", _initialVelocity);
             _compute.SetTexture(Kernels.PFinish, "U_out", VFB.V1);
             _compute.Dispatch(Kernels.PFinish, ThreadCountX, ThreadCountY, 1);
 

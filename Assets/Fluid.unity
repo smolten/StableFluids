@@ -160,15 +160,12 @@ MonoBehaviour:
   calculatesLerp: 1
   _lerpTo2: 0
   _drawType: 0
-  _boundaryType: 1
+  _boundaryType: 0
   velocityMap: {fileID: 2800000, guid: 93d9db6637500754ebc98a80a00f9906, type: 3}
   _overrideVelocityMap: 0
   _setVelocityMapTo: 2
   resetTextures: 0
   clearVelocity: 0
-  swapBuffers: 1
-  pass1not0: 1
-  blit2ndShader: 1
   debugRenderer1: {fileID: 1504460258}
   debugRenderer2: {fileID: 1565843338}
 --- !u!20 &1163476468
