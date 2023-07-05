@@ -50,6 +50,7 @@ namespace StableFluids
         [SerializeField] float _lerpTo2 = 0;
 
         [SerializeField] DrawType _drawType = DrawType.ColorBuffer1;
+        [SerializeField] BoundaryType _boundaryType = BoundaryType.OpenWalls;
 
         public enum DrawType
         {
@@ -60,6 +61,12 @@ namespace StableFluids
             Velocity3,
             Pressure1,
             Pressure2
+        }
+
+        enum BoundaryType {
+            SolidWalls,
+            OpenWalls,
+            LoopedWalls 
         }
 
         [SerializeField] Texture2D velocityMap;
@@ -243,6 +250,7 @@ namespace StableFluids
             _compute.SetFloat("Time", 0);  // Unused
             _compute.SetFloat("DeltaTime", dt);
             _compute.SetFloat("FlowSpeed", FlowSpeed);
+            _compute.SetInt("BoundaryType", (int)_boundaryType);
 
             // Advection
             _compute.SetTexture(Kernels.Advect, "U_in", VFB.V1);

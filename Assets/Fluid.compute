@@ -50,6 +50,115 @@ Texture2D<float2> X2_in;
 Texture2D<float2> B2_in;
 RWTexture2D<float2> X2_out;
 
+
+#define SolidWalls 0
+#define OpenWalls 1
+#define LoopedWalls 2
+int BoundaryType; 
+
+
+// Boundary conditions
+
+void AdvectBoundary(inout float2 uv, out bool zeroVelocity)
+{
+    zeroVelocity = false;
+    switch(BoundaryType)
+    {
+        case SolidWalls: 
+            if (uv.x < 0 || uv.x > 1 || uv.y < 0 || uv.y > 1) {
+                // Clamp UV coordinates to edge
+                uv = clamp(uv, 0, 1);
+            }
+            break;
+        case OpenWalls:
+            if (uv.x < 0 || uv. x > 1 || uv.y < 0 || uv.y > 1) {
+                // Set velocity to 0 at boundaries
+                zeroVelocity = true;
+            }
+            break;
+        case LoopedWalls:
+            if (uv.x < 0) uv.x = 1;  // Loop left to right
+            if (uv.x > 1) uv.x = 0;
+            if (uv.y < 0) uv.y = 1;  // Loop bottom to top
+            if (uv.y > 1) uv.y = 0;
+            break;
+        //default: debug.log("Invalid boundary condition: " + BoundaryType); break;
+    }
+}
+
+void ForceBoundary(uint2 dim, uint2 tid, float2 pos, inout float2 force) 
+{
+    if (BoundaryType == SolidWalls) {
+        // Do nothing, solid walls
+    } else if (BoundaryType == OpenWalls) {
+        if (any(tid == 0) || any(tid == dim - 1)) {
+            // Set force to 0 at boundaries
+            force = 0;
+        }
+    } else if (BoundaryType == LoopedWalls) {
+        if (tid.x == 0) {
+            force = ForceVector * exp(-ForceExponent * distance(ForceOrigin, pos + float2(dim.x - 1, 0))); 
+        } else if (tid.x == dim.x - 1) {
+            force = ForceVector * exp(-ForceExponent * distance(ForceOrigin, pos - float2(dim.x - 1, 0))); 
+        }
+        if (tid.y == 0) {
+            force = ForceVector * exp(-ForceExponent * distance(ForceOrigin, pos + float2(0, dim.y - 1))); 
+        } else if (tid.y == dim.y - 1) {
+            force = ForceVector * exp(-ForceExponent * distance(ForceOrigin, pos - float2(0, dim.y - 1))); 
+        }
+    } else {
+        //debug.log("Invalid boundary condition: " + BoundaryType);
+    }
+}
+
+void PSetupBoundary(uint2 dim, uint2 tid, inout float div) 
+{
+    if (BoundaryType == SolidWalls) {
+        // Do nothing, solid walls
+        //if (div != 0) debug.log("Divergence is not 0 at solid walls");
+    } else if (BoundaryType == OpenWalls) {
+        if (any(tid == 0) || any(tid == dim - 1)) {
+            // Set divergence to 0 at boundaries
+            div = 0;
+        }
+    } else if (BoundaryType == LoopedWalls) {
+        // @ todo - can we move P_in writes to PFinishBoundary?
+
+        // if (tid.x == 0) div = P_in[tid + int2(dim.x - 1, 0)];
+        // if (tid.x == dim.x - 1) div = P_in[tid - int2(dim.x - 1, 0)];
+        // if (tid.y == 0) div = P_in[tid + int2(0, dim.y - 1)];
+        // if (tid.y == dim.y - 1) div = P_in[tid - int2(0, dim.y - 1)];
+    } else {
+        //debug.log("Invalid boundary condition: " + BoundaryType);
+    }
+}
+
+void PFinishBoundary(uint2 dim, uint2 tid, inout float2 vel)
+{
+    if (BoundaryType == SolidWalls) {
+        // Do nothing, solid walls
+    } else if (BoundaryType == OpenWalls) {
+        if (any(tid == 0) || any(tid == dim - 1)) {
+            // Set velocity to 0 at boundaries
+            vel = 0;
+        }
+    } else if (BoundaryType == LoopedWalls) {
+        // @ todo - must save/ remember initial velocity from way earlier in the pipeline
+
+        // if (tid.x == 0) vel.x = U_in[tid + int2(dim.x - 1, 0)].x;
+        // if (tid.x == dim.x - 1) vel.x = U_in[tid - int2(dim.x - 1, 0)].x;
+        // if (tid.y == 0) vel.y = U_in[tid + int2(0, dim.y - 1)].y;
+        // if (tid.y == dim.y - 1) vel.y = U_in[tid - int2(0, dim.y - 1)].y;
+    } else {
+        //debug.log("Invalid boundary condition: " + BoundaryType);
+    }
+}
+
+
+
+
+// Real Code
+
 // Advect step
 [numthreads(8, 8, 1)]
 void Advect(uint2 tid : SV_DispatchThreadID)
@@ -58,9 +167,14 @@ void Advect(uint2 tid : SV_DispatchThreadID)
     W_out.GetDimensions(dim.x, dim.y);
 
     float2 uv = (tid + 0.5) / dim;
+    bool zeroVelocity;
+    AdvectBoundary(uv, zeroVelocity);
     float2 duv = U_in[tid] * float2((float)dim.y / dim.x, 1) * DeltaTime;
 
-    W_out[tid] = U_in.SampleLevel(samplerU_in, uv - duv, 0);
+    if (zeroVelocity)
+        W_out[tid] = float2(0,0);
+    else
+        W_out[tid] = U_in.SampleLevel(samplerU_in, uv - duv, 0);
 }
 
 // Add-force step
@@ -72,8 +186,10 @@ void Force(uint2 tid : SV_DispatchThreadID)
 
     float2 pos = (tid + 0.5 - dim * 0.5) / dim.y;
     float amp = exp(-ForceExponent * distance(ForceOrigin, pos));
+    float2 force = ForceVector * amp;
+    ForceBoundary(dim, tid, pos, force);
 
-    W_out[tid] = W_in[tid] + ForceVector * amp;
+    W_out[tid] = W_in[tid] + force;
 }
 
 // Setup for Project step (divW calculation)
@@ -83,10 +199,13 @@ void PSetup(uint2 tid : SV_DispatchThreadID)
     uint2 dim;
     W_in.GetDimensions(dim.x, dim.y);
 
-    DivW_out[tid] = (W_in[tid + int2(1, 0)].x - W_in[tid - int2(1, 0)].x +
+    float div = (W_in[tid + int2(1, 0)].x - W_in[tid - int2(1, 0)].x +
                      W_in[tid + int2(0, 1)].y - W_in[tid - int2(0, 1)].y) * dim.y / 2;
 
-    P_out[tid] = 0;
+    DivW_out[tid] = div;
+    PSetupBoundary(dim, tid, div);
+
+    P_out[tid] = div;
 }
 
 // Finishing for Project step (divergence free field calculation)
@@ -104,6 +223,8 @@ void PFinish(uint2 tid : SV_DispatchThreadID)
     float P4 = P_in[min(tid + int2(0, 1), dim - 2)];
 
     float2 u = W_in[tid] - float2(P2 - P1, P4 - P3) * dim.y / 2;
+    float2 vel = u;
+    PFinishBoundary(dim, tid, u);
 
     U_out[tid] = u;
 
