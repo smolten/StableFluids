@@ -29,28 +29,38 @@
     float _Phase;
     float _LerpTo2;
 
-    // Apply velocity field to the color texture
-    half4 frag_advect(v2f_img i) : SV_Target
+    // Apply advection to a texture
+    half4 ApplyAdvection(float2 uv, sampler2D colorTexture)
     {
         float2 aspect_inv = float2(_MainTex_TexelSize.x * _MainTex_TexelSize.w, 1);
 
-        float2 velocity = tex2D(_VelocityField, i.uv).xy;
-        float noise = tex2D(_Noise, i.uv).x;
+        float2 velocity = tex2D(_VelocityField, uv).xy;
+        float noise = tex2D(_Noise, uv).x;
         float phase = noise * 0.5 + _Phase;
 
         // Color advection with the velocity field
-        float2 delta = tex2D(_VelocityField, (i.uv) + velocity * phase).xy * aspect_inv;
-        float3 color = tex2D(_MainTex, i.uv - delta).xyz;
+        float2 delta = tex2D(_VelocityField, uv + velocity * phase).xy * aspect_inv;
+        float3 color = tex2D(colorTexture, uv - delta).xyz;
 
         return half4(color, 1);
     }
 
-    // Render Main texture
+    // Apply advection to Texture 1
+    half4 frag_advect1(v2f_img i) : SV_Target
+    {
+        return ApplyAdvection(i.uv, _Tex1);
+    }
+
+    // Apply advection to Texture 2
+    half4 frag_advect2(v2f_img i) : SV_Target
+    {
+        return ApplyAdvection(i.uv, _Tex2);
+    }
+
+    // Draw the main texture
     half4 frag_img_main(v2f_img i) : SV_Target
     {
-        float3 color = tex2D(_MainTex, i.uv).xyz;
-
-        return half4(color, 1);
+        return tex2D(_MainTex, i.uv);
     }
 
     // Render a mix of the two textures
@@ -74,7 +84,14 @@
         {
             CGPROGRAM
             #pragma vertex vert_img
-            #pragma fragment frag_advect
+            #pragma fragment frag_advect1
+            ENDCG
+        }
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex vert_img
+            #pragma fragment frag_advect2
             ENDCG
         }
         Pass

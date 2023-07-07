@@ -36,8 +36,10 @@ namespace StableFluids
 
         [Header("Custom Code")]
 
+        public MeshRenderer displayRenderer;
+
         public float FlowSpeed = 1.0f;
-        public float CycleLength = 1.0f;
+        public float CycleLength = 2.0f;
 
         public bool animate = true;
         public bool resetAtCycleEnd = true;
@@ -60,7 +62,8 @@ namespace StableFluids
             Velocity2,
             Velocity3,
             Pressure1,
-            Pressure2
+            Pressure2,
+            Noise
         }
 
         enum BoundaryType {
@@ -70,12 +73,12 @@ namespace StableFluids
         }
 
         enum ShaderKernel {
-            Advect = 0, DrawMain = 1, DrawMix = 2
+            Advect1 = 0, Advect2 =1, DrawMain = 2, DrawMix = 3
         }
 
-        [SerializeField] Texture2D velocityMap;
-        [SerializeField] bool _overrideVelocityMap;
-        [SerializeField] DrawType _setVelocityMapTo = DrawType.Velocity1;
+        [SerializeField] Texture2D customTexture;
+        [SerializeField] bool applyCustomTexture;
+        [SerializeField] DrawType setCustomTextureTo = DrawType.Velocity1;
 
         [Header("Debug")]
         public bool resetTextures = false;
@@ -115,9 +118,7 @@ namespace StableFluids
         // Color buffers (for double buffering)
         (RenderTexture buffA, RenderTexture buffB) _color1;
         (RenderTexture buffA, RenderTexture buffB) _color2;  
-
-        // Tmp buffers
-        //RenderTexture _initialVelocity;
+        RenderTexture _colorMixed;
 
         RenderTexture AllocateBuffer(int componentCount, int width = 0, int height = 0)
         {
@@ -159,7 +160,14 @@ namespace StableFluids
             _color1.buffB = AllocateBuffer(4, _resolution, _resolution);
             _color2.buffA = AllocateBuffer(4, _resolution, _resolution);
             _color2.buffB = AllocateBuffer(4, _resolution, _resolution);
+            _colorMixed = AllocateBuffer(4, _resolution, _resolution);
 
+            // Prevent disk-write for asset reference
+            if (displayRenderer != null) {
+                displayRenderer.material = new Material(displayRenderer.material);
+                displayRenderer.material.mainTexture = _colorMixed;
+            }
+            // Set others
 			if (debugRenderer2)
             	debugRenderer1.material.mainTexture = _color1.buffA;
             if (debugRenderer2)
@@ -186,12 +194,11 @@ namespace StableFluids
             Destroy(VFB.P1);
             Destroy(VFB.P2);
 
-            //Destroy(_initialVelocity);
-
             Destroy(_color1.buffA);
             Destroy(_color1.buffB);
             Destroy(_color2.buffA);
             Destroy(_color2.buffB);
+            Destroy(_colorMixed);
         }
 
 
@@ -231,10 +238,10 @@ namespace StableFluids
                 _lerpTo2 = ( Mathf.Abs(HalfCycle - _phase1) / HalfCycle );
             }
 
-            if (_overrideVelocityMap)
+            if (applyCustomTexture)
             {
-                RenderTexture target = GetTexture(_setVelocityMapTo);
-                Graphics.Blit(velocityMap, target);
+                RenderTexture target = GetRenderTexture(setCustomTextureTo);
+                Graphics.Blit(customTexture, target);
             }
             if (clearVelocity)
             {
@@ -352,8 +359,8 @@ namespace StableFluids
             _shaderSheet.SetTexture("_Tex1", _color1.buffA);
             _shaderSheet.SetTexture("_Tex2", _color2.buffA);
             _shaderSheet.SetTexture("_Noise", _noise);
-            Graphics.Blit(_color1.buffA, _color1.buffB, _shaderSheet, (int)ShaderKernel.Advect);
-            Graphics.Blit(_color2.buffA, _color2.buffB, _shaderSheet, (int)ShaderKernel.Advect);
+            Graphics.Blit(_color1.buffA, _color1.buffB, _shaderSheet, (int)ShaderKernel.Advect1);
+            Graphics.Blit(_color2.buffA, _color2.buffB, _shaderSheet, (int)ShaderKernel.Advect2);
 
             //Swap the color buffers.
             var temp = _color1.buffA;
@@ -367,20 +374,49 @@ namespace StableFluids
             _previousInput = input;
         }
 
-        void OnRenderImage(RenderTexture source, RenderTexture destination)
+        void OnRenderObject()
         {
             DrawType drawType = _drawType;
-
-            RenderTexture drawRT = GetTexture(drawType);
+            RenderTexture target = _colorMixed;
+            
+            if (drawType == DrawType.Noise)
+            {
+                Graphics.Blit(_noise, target);
+                return;
+            }
 
             // Draw either a Blend of the two resetTextures
             // Or simply the velocity/pressure field that was blitted to main texture
             bool drawMix = (drawType == DrawType.ColorBuffer1 || drawType == DrawType.ColorBuffer2);
             ShaderKernel kernel = (drawMix) ? ShaderKernel.DrawMix : ShaderKernel.DrawMain; 
-            Graphics.Blit(drawRT, destination, _shaderSheet, (int)kernel);
-        }
 
-        RenderTexture GetTexture(DrawType drawType)
+            RenderTexture drawRT = GetRenderTexture(drawType);
+            Graphics.Blit(drawRT, target, _shaderSheet, (int)kernel);
+        }
+        // void OnRenderImage(RenderTexture source, RenderTexture destination)
+        // {
+        //     DrawType drawType = _drawType;
+        //     RenderTexture target = destination;
+        //     if (displayRenderer != null) {
+        //         target = _colorMixed;
+        //     }
+            
+        //     if (drawType == DrawType.Noise)
+        //     {
+        //         Graphics.Blit(_noise, target);
+        //         return;
+        //     }
+
+        //     // Draw either a Blend of the two resetTextures
+        //     // Or simply the velocity/pressure field that was blitted to main texture
+        //     bool drawMix = (drawType == DrawType.ColorBuffer1 || drawType == DrawType.ColorBuffer2);
+        //     ShaderKernel kernel = (drawMix) ? ShaderKernel.DrawMix : ShaderKernel.DrawMain; 
+
+        //     RenderTexture drawRT = GetRenderTexture(drawType);
+        //     Graphics.Blit(drawRT, target, _shaderSheet, (int)kernel);
+        // }
+
+        RenderTexture GetRenderTexture(DrawType drawType)
         {
             RenderTexture rt = null;
             switch(drawType)
@@ -392,7 +428,11 @@ namespace StableFluids
                 case DrawType.Velocity3: rt = VFB.V3; break;
                 case DrawType.Pressure1: rt = VFB.P1; break;
                 case DrawType.Pressure2: rt = VFB.P2; break;
-                default: Debug.LogError("Invalid DrawType " + _drawType); break;
+                case DrawType.Noise : Debug.LogWarning("Noise has no RenderTexture"); break;
+                default: 
+                    Debug.LogWarning("Invalid DrawType " + _drawType); 
+                    break;
+
             }
             return rt;
         }
